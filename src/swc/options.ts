@@ -172,6 +172,9 @@ export interface CliOptions {
   readonly includeDotfiles: boolean;
   readonly deleteDirOnStart: boolean;
   readonly quiet: boolean;
+
+  readonly only: string[];
+  readonly ignore: string[];
 }
 
 export default function parserArgs(args: string[]) {
@@ -276,6 +279,8 @@ export default function parserArgs(args: string[]) {
     includeDotfiles: !!opts.includeDotfiles,
     deleteDirOnStart: Boolean(opts.deleteDirOnStart),
     quiet: !!opts.quiet,
+    only: opts.only || [],
+    ignore: opts.ignore || [],
   };
   return {
     swcOptions,
