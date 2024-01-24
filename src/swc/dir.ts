@@ -1,10 +1,10 @@
-import slash from "slash";
 import { existsSync, promises } from "fs";
-import { dirname, relative, join } from "path";
+import { dirname, resolve } from "path";
+import Piscina from "piscina";
 import { CompileStatus } from "./constants";
 import { CliOptions } from "./options";
-import { compile, exists } from "./util";
-import { outputResult } from "./compile";
+import { exists, getDest } from "./util";
+import handleCompile from "./dirWorker";
 import {
   globSources,
   isCompilableExtension,
@@ -26,53 +26,7 @@ declare module "fs" {
 
 const { mkdir, rmdir, rm, copyFile, unlink } = promises;
 
-const cwd = process.cwd();
 const recursive = { recursive: true };
-
-/**
- * Removes the leading directory, including all parent relative paths
- */
-function stripComponents(filename: string) {
-  const components = filename.split("/").slice(1);
-  if (!components.length) {
-    return filename;
-  }
-  while (components[0] === "..") {
-    components.shift();
-  }
-  return components.join("/");
-}
-
-function getDest(filename: string, outDir: string, ext?: string) {
-  const relativePath = slash(relative(cwd, filename));
-  let base = stripComponents(relativePath);
-  if (ext) {
-    base = base.replace(/\.\w*$/, ext);
-  }
-  return join(outDir, base);
-}
-
-async function handleCompile(
-  filename: string,
-  outDir: string,
-  sync: boolean,
-  swcOptions: Options,
-  extension: string
-) {
-  const dest = getDest(filename, outDir, `.${extension}`);
-  const sourceFileName = slash(relative(dirname(dest), filename));
-
-  const options = { ...swcOptions, sourceFileName };
-
-  const result = await compile(filename, options, sync, dest);
-
-  if (result) {
-    await outputResult(result, filename, dest, options);
-    return CompileStatus.Compiled;
-  } else {
-    return CompileStatus.Omitted;
-  }
-}
 
 async function handleCopy(filename: string, outDir: string) {
   const dest = getDest(filename, outDir);
@@ -151,15 +105,19 @@ async function initialCompilation(cliOptions: CliOptions, swcOptions: Options) {
       }
     }
   } else {
+    const workers = new Piscina({
+      filename: resolve(__dirname, "./dirWorker.js"),
+      maxThreads: cliOptions.workers,
+      concurrentTasksPerWorker: 2,
+    });
+
     await Promise.all([
       Promise.allSettled(
-        compilable.map(file =>
-          handleCompile(file, outDir, sync, swcOptions, outFileExtension).catch(
-            err => {
-              console.error(err.message);
-              throw err;
-            }
-          )
+        compilable.map(filename =>
+          workers.run({ filename, outDir, sync, swcOptions, outFileExtension }).catch(err => {
+            console.error(err.message);
+            throw err;
+          })
         )
       ),
       Promise.allSettled(copyable.map(file => handleCopy(file, outDir))),
@@ -275,13 +233,13 @@ async function watchCompilation(cliOptions: CliOptions, swcOptions: Options) {
       if (isCompilableExtension(filename, extensions)) {
         try {
           const start = process.hrtime();
-          const result = await handleCompile(
+          const result = await handleCompile({
             filename,
             outDir,
             sync,
             swcOptions,
             outFileExtension
-          );
+          });
           if (!quiet && result === CompileStatus.Compiled) {
             const end = process.hrtime(start);
             console.log(
