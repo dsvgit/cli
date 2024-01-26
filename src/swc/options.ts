@@ -90,6 +90,12 @@ export const initProgram = () => {
     "-D, --copy-files",
     "When compiling a directory copy over non-compilable files"
   );
+
+  program.option(
+    "--strip-leading-paths",
+    "Remove the leading directory (including all parent relative paths) when building the final output path"
+  );
+
   program.option(
     "--include-dotfiles",
     "Include dotfiles when compiling and copying non-compilable files"
@@ -163,6 +169,7 @@ function collect(
 export interface CliOptions {
   readonly outDir: string;
   readonly outFile: string;
+  readonly stripLeadingPaths: boolean;
   /**
    * Invoke swc using transformSync. It's useful for debugging.
    */
@@ -284,6 +291,7 @@ export default function parserArgs(args: string[]) {
   const cliOptions: CliOptions = {
     outDir: opts.outDir,
     outFile: opts.outFile,
+    stripLeadingPaths: Boolean(opts.stripLeadingPaths),
     filename: opts.filename,
     filenames,
     sync: !!opts.sync,

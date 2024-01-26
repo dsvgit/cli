@@ -28,8 +28,12 @@ const { mkdir, rmdir, rm, copyFile, unlink } = promises;
 
 const recursive = { recursive: true };
 
-async function handleCopy(filename: string, outDir: string) {
-  const dest = getDest(filename, outDir);
+async function handleCopy(
+  filename: string,
+  outDir: string,
+  stripLeadingPaths: boolean
+) {
+  const dest = getDest(filename, outDir, stripLeadingPaths);
   const dir = dirname(dest);
 
   await mkdir(dir, recursive);
@@ -57,6 +61,7 @@ async function initialCompilation(cliOptions: CliOptions, swcOptions: Options) {
     extensions,
     outDir,
     outFileExtension,
+    stripLeadingPaths,
     sync,
     quiet,
     watch,
@@ -86,6 +91,7 @@ async function initialCompilation(cliOptions: CliOptions, swcOptions: Options) {
           filename,
           outDir,
           sync,
+          cliOptions,
           swcOptions,
           outFileExtension
         );
@@ -97,7 +103,7 @@ async function initialCompilation(cliOptions: CliOptions, swcOptions: Options) {
     }
     for (const filename of copyable) {
       try {
-        const result = await handleCopy(filename, outDir);
+        const result = await handleCopy(filename, outDir, stripLeadingPaths);
         results.set(filename, result);
       } catch (err: any) {
         console.error(err.message);
@@ -120,7 +126,9 @@ async function initialCompilation(cliOptions: CliOptions, swcOptions: Options) {
           })
         )
       ),
-      Promise.allSettled(copyable.map(file => handleCopy(file, outDir))),
+      Promise.allSettled(
+        copyable.map(file => handleCopy(file, outDir, stripLeadingPaths))
+      ),
     ]).then(([compiled, copied]) => {
       compiled.forEach((result, index) => {
         const filename = compilable[index];
@@ -199,6 +207,7 @@ async function watchCompilation(cliOptions: CliOptions, swcOptions: Options) {
     copyFiles,
     extensions,
     outDir,
+    stripLeadingPaths,
     outFileExtension,
     quiet,
     sync,
@@ -213,14 +222,19 @@ async function watchCompilation(cliOptions: CliOptions, swcOptions: Options) {
   watcher.on("unlink", async filename => {
     try {
       if (isCompilableExtension(filename, extensions)) {
-        await unlink(getDest(filename, outDir, ".js"));
-        const sourcemapPath = getDest(filename, outDir, ".js.map");
+        await unlink(getDest(filename, outDir, stripLeadingPaths, ".js"));
+        const sourcemapPath = getDest(
+          filename,
+          outDir,
+          stripLeadingPaths,
+          ".js.map"
+        );
         const sourcemapExists = await exists(sourcemapPath);
         if (sourcemapExists) {
           await unlink(sourcemapPath);
         }
       } else if (copyFiles) {
-        await unlink(getDest(filename, outDir));
+        await unlink(getDest(filename, outDir, stripLeadingPaths));
       }
     } catch (err: any) {
       if (err.code !== "ENOENT") {
@@ -237,6 +251,7 @@ async function watchCompilation(cliOptions: CliOptions, swcOptions: Options) {
             filename,
             outDir,
             sync,
+            cliOptions,
             swcOptions,
             outFileExtension
           });
@@ -253,7 +268,7 @@ async function watchCompilation(cliOptions: CliOptions, swcOptions: Options) {
       } else if (copyFiles) {
         try {
           const start = process.hrtime();
-          const result = await handleCopy(filename, outDir);
+          const result = await handleCopy(filename, outDir, stripLeadingPaths);
           if (!quiet && result === CompileStatus.Copied) {
             const end = process.hrtime(start);
             console.log(
