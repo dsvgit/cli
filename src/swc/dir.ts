@@ -87,14 +87,14 @@ async function initialCompilation(cliOptions: CliOptions, swcOptions: Options) {
   if (sync) {
     for (const filename of compilable) {
       try {
-        const result = await handleCompile(
+        const result = await handleCompile({
           filename,
           outDir,
           sync,
           cliOptions,
           swcOptions,
-          outFileExtension
-        );
+          outFileExtension,
+        });
         results.set(filename, result);
       } catch (err: any) {
         console.error(err.message);
@@ -121,7 +121,14 @@ async function initialCompilation(cliOptions: CliOptions, swcOptions: Options) {
       Promise.allSettled(
         compilable.map(filename =>
           workers
-            .run({ filename, outDir, sync, cliOptions, swcOptions, outFileExtension })
+            .run({
+              filename,
+              outDir,
+              sync,
+              cliOptions,
+              swcOptions,
+              outFileExtension,
+            })
             .catch(err => {
               console.error(err.message);
               throw err;
@@ -255,7 +262,7 @@ async function watchCompilation(cliOptions: CliOptions, swcOptions: Options) {
             sync,
             cliOptions,
             swcOptions,
-            outFileExtension
+            outFileExtension,
           });
           if (!quiet && result === CompileStatus.Compiled) {
             const end = process.hrtime(start);
